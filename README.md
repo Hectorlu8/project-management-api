@@ -2,6 +2,9 @@
 
 REST API for managing users, projects and tasks, built with FastAPI.
 
+## Run
+fastapi dev .\app\main.py
+
 ## Tech Stack
 
 - Python
