@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException, status
 from app.schemas import UserCreate, User, UserUpdate, ProjectCreate, Project, ProjectUpdate, TaskCreate, Task, TaskUpdate, TaskStatus, TaskPriority
+from app.database import Base, engine
+from app import models
 ##Almacenamiento temporal de usuarios
 users = []
 projects = []
