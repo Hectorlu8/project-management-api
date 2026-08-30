@@ -1,12 +1,13 @@
 from enum import Enum
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 
 class UserCreate(BaseModel):
     username: str
     email: EmailStr
     
 class User(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     username: str
     email: EmailStr    
@@ -21,6 +22,7 @@ class ProjectCreate(BaseModel):
     owner_id: int    
     
 class Project(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     name:str
     description: str | None = None
@@ -47,6 +49,7 @@ class TaskCreate(BaseModel):
     project_id: int    
  
 class Task(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     title: str
     description: str | None = None
