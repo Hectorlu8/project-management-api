@@ -1,8 +1,13 @@
 from fastapi import FastAPI, HTTPException, status, Depends
+import jwt
 from app.schemas import UserCreate, User, UserUpdate, ProjectCreate, Project, ProjectUpdate, TaskCreate, Task, TaskUpdate
 from app.database import SessionLocal
+from app.security import create_access_token, decode_access_token, hash_password, verify_password
 from app import models
 from sqlalchemy.orm import Session
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 def get_db():
     db = SessionLocal()
@@ -17,17 +22,44 @@ app = FastAPI(
     version = "0.1.0"
 )
 
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db))-> models.User:
+    try:
+        payload = decode_access_token(token)
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    email: str = payload.get("sub")
+    if email is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    
+    return user
+    
+
+@app.post("/token")
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == form_data.username).first()
+    
+    if user is None or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
+    
+    access_token = create_access_token(data={"sub": user.email})
+    
+    return {"access_token": access_token, "token_type": "bearer"}
+
 @app.get("/")
 def read_root():
     return {"message": "Project Management API"}
 
 
 @app.get("/users/", response_model=list[User])
-def get_users(db: Session = Depends(get_db)):
+def get_users(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     return db.query(models.User).all()
 
 @app.get("/users/{user_id}", response_model=User)
-def get_user(user_id: int, db: Session = Depends(get_db)):
+def get_user(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     user = db.get(models.User, user_id)
     
     if user is None:
@@ -37,14 +69,14 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 
 @app.post("/users/" , response_model=User, status_code=status.HTTP_201_CREATED)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    new_user = models.User(username=user.username, email=user.email)
+    new_user = models.User(username=user.username, email=user.email, hashed_password=hash_password(user.password))
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
     return new_user
 
 @app.delete("/users/{user_id}" , status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(user_id: int, db: Session = Depends(get_db)):
+def delete_user(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     user = db.get(models.User, user_id)
 
     if user is None:
@@ -59,7 +91,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     return None
 
 @app.patch("/users/{user_id}" , response_model=User)
-def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
+def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     user = db.get(models.User, user_id)
 
     if user is None:
@@ -74,11 +106,11 @@ def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get
     return user
 
 @app.get("/projects/", response_model=list[Project])
-def get_projects(db: Session = Depends(get_db)):
+def get_projects(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     return db.query(models.Project).all()
 
 @app.get("/projects/{project_id}", response_model=Project)
-def get_project(project_id: int, db: Session = Depends(get_db)):
+def get_project(project_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     project = db.get(models.Project, project_id)
 
     if project is None:
@@ -87,7 +119,7 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
     return project
 
 @app.post("/projects/", status_code=status.HTTP_201_CREATED, response_model=Project)
-def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
+def create_project(project: ProjectCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     owner = db.get(models.User, project.owner_id)
 
     if owner is None:
@@ -100,7 +132,7 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     return new_project
 
 @app.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_project(project_id: int, db: Session = Depends(get_db)):
+def delete_project(project_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     project = db.get(models.Project, project_id)
 
     if project is None:
@@ -114,7 +146,7 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
     return None
 
 @app.patch("/projects/{project_id}", response_model=Project)
-def update_project(project_id: int, project_update: ProjectUpdate, db: Session = Depends(get_db)):
+def update_project(project_id: int, project_update: ProjectUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     project = db.get(models.Project, project_id)
 
     if project is None:
@@ -129,11 +161,11 @@ def update_project(project_id: int, project_update: ProjectUpdate, db: Session =
     return project
 
 @app.get("/tasks/", response_model=list[Task])
-def get_tasks(db: Session = Depends(get_db)):
+def get_tasks(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     return db.query(models.Task).all()
 
 @app.get("/tasks/{task_id}", response_model=Task)
-def get_task(task_id: int, db: Session = Depends(get_db)):
+def get_task(task_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     task = db.get(models.Task, task_id)
 
     if task is None:
@@ -142,7 +174,7 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
     return task
 
 @app.post("/tasks/", status_code=status.HTTP_201_CREATED, response_model=Task)
-def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+def create_task(task: TaskCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     project = db.get(models.Project, task.project_id)
 
     if project is None:
@@ -155,7 +187,7 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
     return new_task
 
 @app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(task_id: int, db: Session = Depends(get_db)):
+def delete_task(task_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     task = db.get(models.Task, task_id)
 
     if task is None:
@@ -166,7 +198,7 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
     return None
 
 @app.patch("/tasks/{task_id}", response_model=Task)
-def update_task(task_id: int, task_update: TaskUpdate, db: Session = Depends(get_db)):
+def update_task(task_id: int, task_update: TaskUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     task = db.get(models.Task, task_id)
 
     if task is None:
