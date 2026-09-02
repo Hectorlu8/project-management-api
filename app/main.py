@@ -1,13 +1,25 @@
-from fastapi import FastAPI, HTTPException, status, Depends
+import time
+
+from fastapi import FastAPI, HTTPException, status, Depends, Query, Request
+from fastapi.responses import JSONResponse
 import jwt
-from app.schemas import UserCreate, User, UserUpdate, ProjectCreate, Project, ProjectUpdate, TaskCreate, Task, TaskUpdate
+from app.schemas import UserCreate, User, UserUpdate, ProjectCreate, Project, ProjectUpdate, TaskCreate, Task, TaskUpdate, TaskStatus, TaskPriority
 from app.database import SessionLocal
 from app.security import create_access_token, decode_access_token, hash_password, verify_password
 from app import models
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+import logging 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+
+app = FastAPI(
+    title = "Project Management API",
+    description = "API for managing projects, tasks, and users.",
+    version = "0.1.0"
+)
 
 def get_db():
     db = SessionLocal()
@@ -16,23 +28,42 @@ def get_db():
     finally:
         db.close()
 
-app = FastAPI(
-    title = "Project Management API",
-    description = "API for managing projects, tasks, and users.",
-    version = "0.1.0"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+logger = logging.getLogger(__name__)
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    logger.info(f"{request.method} {request.url.path} -> {response.status_code} ({duration_ms:.1f}ms)")
+    return response
+
+@app.exception_handler(IntegrityError)
+def integrity_error_handler(request: Request, exc: IntegrityError):
+    logger.warning("A database constraint was violated")
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": "A database constraint was violated"},
+    )
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db))-> models.User:
     try:
         payload = decode_access_token(token)
     except jwt.PyJWTError:
+        logger.warning("Invalid token provided")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     email: str = payload.get("sub")
     if email is None:
+        logger.warning("Token does not contain a valid subject")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None:
+        logger.warning(f"User not found for email: {email}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     
     return user
@@ -43,6 +74,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     
     if user is None or not verify_password(form_data.password, user.hashed_password):
+        logger.warning(f"Failed login attempt for email: {form_data.username}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
     
     access_token = create_access_token(data={"sub": user.email})
@@ -55,8 +87,11 @@ def read_root():
 
 
 @app.get("/users/", response_model=list[User])
-def get_users(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    return db.query(models.User).all()
+def get_users(db: Session = Depends(get_db),skip: int = Query(default=0, ge=0), limit: int = Query(default=100, le=100), current_user: models.User = Depends(get_current_user)):
+    
+    query = db.query(models.User)
+    
+    return query.offset(skip).limit(limit).all()
 
 @app.get("/users/{user_id}", response_model=User)
 def get_user(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
@@ -71,7 +106,10 @@ def get_user(user_id: int, db: Session = Depends(get_db), current_user: models.U
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
     new_user = models.User(username=user.username, email=user.email, hashed_password=hash_password(user.password))
     db.add(new_user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A user with this email already exists")
     db.refresh(new_user)
     return new_user
 
@@ -106,8 +144,14 @@ def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get
     return user
 
 @app.get("/projects/", response_model=list[Project])
-def get_projects(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    return db.query(models.Project).all()
+def get_projects(owner_id: int |None = None, db: Session = Depends(get_db),skip: int = Query(default=0, ge=0), limit: int = Query(default=100, le=100), current_user: models.User = Depends(get_current_user)):
+    
+    query = db.query(models.Project)
+    
+    if owner_id is not None:
+        query = query.filter(models.Project.owner_id == owner_id)
+        
+    return query.offset(skip).limit(limit).all()
 
 @app.get("/projects/{project_id}", response_model=Project)
 def get_project(project_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
@@ -161,8 +205,27 @@ def update_project(project_id: int, project_update: ProjectUpdate, db: Session =
     return project
 
 @app.get("/tasks/", response_model=list[Task])
-def get_tasks(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    return db.query(models.Task).all()
+def get_tasks(
+    status: TaskStatus | None = None,
+    priority: TaskPriority | None = None,
+    project_id: int | None = None,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, le=100),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    query = db.query(models.Task)
+
+    if status is not None:
+        query = query.filter(models.Task.status == status)
+    if priority is not None:
+        query = query.filter(models.Task.priority == priority)
+    if project_id is not None:
+        query = query.filter(models.Task.project_id == project_id)
+
+    return query.offset(skip).limit(limit).all()
+
+
 
 @app.get("/tasks/{task_id}", response_model=Task)
 def get_task(task_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
