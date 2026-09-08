@@ -1,4 +1,3 @@
-from app import models
 from app.security import hash_password, verify_password, decode_access_token, create_access_token
 from datetime import timedelta
 import pytest
