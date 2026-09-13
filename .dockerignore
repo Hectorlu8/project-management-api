@@ -1,10 +1,13 @@
 venv/
 __pycache__/
 *.py[cod]
-
+.pytest_cache/
+.git/
+.gitignore
 .env
 .env.test
 .env.docker
-
+*.md
+.claude/
 .vscode/
 .idea/

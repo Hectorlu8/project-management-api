@@ -22,7 +22,7 @@ contain tasks with a status and priority.
 ## Tech stack
 
 Python · FastAPI · PostgreSQL · SQLAlchemy · Alembic · Pydantic ·
-PyJWT · bcrypt · pytest
+PyJWT · bcrypt · pytest · Docker · Docker Compose
 
 ## Project structure
 
@@ -38,7 +38,25 @@ alembic/        # Database migrations
 tests/          # pytest suite (unit + integration tests)
 ```
 
-## Setup
+## Run with Docker (fastest way to try it)
+
+```
+cp .env.docker.example .env.docker
+```
+
+Fill in `.env.docker` (a `SECRET_KEY` and Postgres credentials — see
+the file for the exact format), then:
+
+```
+docker compose up --build
+```
+
+This builds the API image, starts PostgreSQL in its own container, waits
+for it to be healthy, applies migrations, and starts the API. It's
+available at `http://localhost:8000/docs`. Data persists in a Docker
+volume across restarts; run `docker compose down -v` to wipe it.
+
+## Setup (without Docker)
 
 ### Prerequisites
 
@@ -109,5 +127,5 @@ pytest
 
 Work in progress — part of a larger backend learning roadmap. Completed
 so far: FastAPI CRUD, PostgreSQL + Alembic migrations, JWT auth, filters/
-pagination, consistent error handling, and request logging. Test suite
-(pytest) is in progress.
+pagination, consistent error handling, request logging, a pytest suite
+(unit, integration, and mocking), and a Docker/Compose setup.
