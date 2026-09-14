@@ -1,8 +1,12 @@
 # Project Management API
 
+![CI](https://github.com/Hectorlu8/project-management-api/actions/workflows/ci.yml/badge.svg)
+
 A REST API for managing users, projects, and tasks, built with FastAPI
 and PostgreSQL. Users authenticate with JWT, own projects, and projects
 contain tasks with a status and priority.
+
+**Live demo:** https://project-management-api-313771756622.europe-west1.run.app/docs
 
 ## Features
 
@@ -18,11 +22,14 @@ contain tasks with a status and priority.
   code, and duration
 - **Environment-based configuration** via `pydantic-settings`, with
   validation that fails fast on missing/invalid config
+- **CI/CD**: every push runs the test suite and builds the Docker image;
+  pushes to `main` also deploy automatically to Cloud Run
 
 ## Tech stack
 
 Python · FastAPI · PostgreSQL · SQLAlchemy · Alembic · Pydantic ·
-PyJWT · bcrypt · pytest · Docker · Docker Compose
+PyJWT · bcrypt · pytest · Docker · Docker Compose · GitHub Actions ·
+Google Cloud Run
 
 ## Project structure
 
@@ -128,4 +135,6 @@ pytest
 Work in progress — part of a larger backend learning roadmap. Completed
 so far: FastAPI CRUD, PostgreSQL + Alembic migrations, JWT auth, filters/
 pagination, consistent error handling, request logging, a pytest suite
-(unit, integration, and mocking), and a Docker/Compose setup.
+(unit, integration, and mocking), a Docker/Compose setup, and a CI/CD
+pipeline (GitHub Actions) that tests, builds, and deploys to Cloud Run
+on every push to `main`.
