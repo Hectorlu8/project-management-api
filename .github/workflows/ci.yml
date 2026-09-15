@@ -96,4 +96,5 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --port 8000 \
+            --max-instances 3 \
             --set-env-vars "DATABASE_URL=${{ secrets.PROD_DATABASE_URL }},SECRET_KEY=${{ secrets.PROD_SECRET_KEY }},ALGORITHM=HS256,ACCESS_TOKEN_EXPIRE_MINUTES=30"
