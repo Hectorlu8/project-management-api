@@ -18,7 +18,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 app = FastAPI(
     title = "Project Management API",
     description = "API for managing projects, tasks, and users.",
-    version = "0.1.0"
+    version = "1.0.0"
 )
 
 def get_db():
@@ -69,7 +69,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
     
 
-@app.post("/token")
+@app.post("/token", tags=["auth"])
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     
@@ -86,14 +86,14 @@ def read_root():
     return {"message": "Project Management API"}
 
 
-@app.get("/users/", response_model=list[User])
+@app.get("/users/", response_model=list[User], tags=["users"])
 def get_users(db: Session = Depends(get_db),skip: int = Query(default=0, ge=0), limit: int = Query(default=100, le=100), current_user: models.User = Depends(get_current_user)):
     
     query = db.query(models.User)
     
     return query.offset(skip).limit(limit).all()
 
-@app.get("/users/{user_id}", response_model=User)
+@app.get("/users/{user_id}", response_model=User, tags=["users"])
 def get_user(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     user = db.get(models.User, user_id)
     
@@ -102,7 +102,7 @@ def get_user(user_id: int, db: Session = Depends(get_db), current_user: models.U
     
     return user
 
-@app.post("/users/" , response_model=User, status_code=status.HTTP_201_CREATED)
+@app.post("/users/" , response_model=User, status_code=status.HTTP_201_CREATED, tags=["users"])
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
     new_user = models.User(username=user.username, email=user.email, hashed_password=hash_password(user.password))
     db.add(new_user)
@@ -113,7 +113,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return new_user
 
-@app.delete("/users/{user_id}" , status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/users/{user_id}" , status_code=status.HTTP_204_NO_CONTENT, tags=["users"])
 def delete_user(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     user = db.get(models.User, user_id)
 
@@ -128,7 +128,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), current_user: model
     
     return None
 
-@app.patch("/users/{user_id}" , response_model=User)
+@app.patch("/users/{user_id}" , response_model=User, tags=["users"])
 def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     user = db.get(models.User, user_id)
 
@@ -143,7 +143,7 @@ def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get
 
     return user
 
-@app.get("/projects/", response_model=list[Project])
+@app.get("/projects/", response_model=list[Project], tags=["projects"])
 def get_projects(owner_id: int |None = None, db: Session = Depends(get_db),skip: int = Query(default=0, ge=0), limit: int = Query(default=100, le=100), current_user: models.User = Depends(get_current_user)):
     
     query = db.query(models.Project)
@@ -153,7 +153,7 @@ def get_projects(owner_id: int |None = None, db: Session = Depends(get_db),skip:
         
     return query.offset(skip).limit(limit).all()
 
-@app.get("/projects/{project_id}", response_model=Project)
+@app.get("/projects/{project_id}", response_model=Project, tags=["projects"])
 def get_project(project_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     project = db.get(models.Project, project_id)
 
@@ -162,7 +162,7 @@ def get_project(project_id: int, db: Session = Depends(get_db), current_user: mo
 
     return project
 
-@app.post("/projects/", status_code=status.HTTP_201_CREATED, response_model=Project)
+@app.post("/projects/", status_code=status.HTTP_201_CREATED, response_model=Project, tags=["projects"])
 def create_project(project: ProjectCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     owner = db.get(models.User, project.owner_id)
 
@@ -175,7 +175,7 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db), curren
     db.refresh(new_project)
     return new_project
 
-@app.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["projects"])
 def delete_project(project_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     project = db.get(models.Project, project_id)
 
@@ -189,7 +189,7 @@ def delete_project(project_id: int, db: Session = Depends(get_db), current_user:
     db.commit()
     return None
 
-@app.patch("/projects/{project_id}", response_model=Project)
+@app.patch("/projects/{project_id}", response_model=Project, tags=["projects"])
 def update_project(project_id: int, project_update: ProjectUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     project = db.get(models.Project, project_id)
 
@@ -204,7 +204,7 @@ def update_project(project_id: int, project_update: ProjectUpdate, db: Session =
 
     return project
 
-@app.get("/tasks/", response_model=list[Task])
+@app.get("/tasks/", response_model=list[Task], tags=["tasks"])
 def get_tasks(
     status: TaskStatus | None = None,
     priority: TaskPriority | None = None,
@@ -227,7 +227,7 @@ def get_tasks(
 
 
 
-@app.get("/tasks/{task_id}", response_model=Task)
+@app.get("/tasks/{task_id}", response_model=Task, tags=["tasks"])
 def get_task(task_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     task = db.get(models.Task, task_id)
 
@@ -236,7 +236,7 @@ def get_task(task_id: int, db: Session = Depends(get_db), current_user: models.U
 
     return task
 
-@app.post("/tasks/", status_code=status.HTTP_201_CREATED, response_model=Task)
+@app.post("/tasks/", status_code=status.HTTP_201_CREATED, response_model=Task, tags=["tasks"])
 def create_task(task: TaskCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     project = db.get(models.Project, task.project_id)
 
@@ -249,7 +249,7 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db), current_user: m
     db.refresh(new_task)
     return new_task
 
-@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["tasks"])
 def delete_task(task_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     task = db.get(models.Task, task_id)
 
@@ -260,7 +260,7 @@ def delete_task(task_id: int, db: Session = Depends(get_db), current_user: model
     db.commit()
     return None
 
-@app.patch("/tasks/{task_id}", response_model=Task)
+@app.patch("/tasks/{task_id}", response_model=Task, tags=["tasks"])
 def update_task(task_id: int, task_update: TaskUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     task = db.get(models.Task, task_id)
 

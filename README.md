@@ -31,6 +31,40 @@ Python · FastAPI · PostgreSQL · SQLAlchemy · Alembic · Pydantic ·
 PyJWT · bcrypt · pytest · Docker · Docker Compose · GitHub Actions ·
 Google Cloud Run
 
+## Architecture
+
+**Data model:** a `User` owns many `Project`s; a `Project` has many
+`Task`s (`status`: To Do / In Progress / Done; `priority`: Low / Medium
+/ High). Both relationships cascade-protect on delete — you can't
+delete a user with projects, or a project with tasks, without removing
+the dependents first.
+
+**Request flow:** `main.py` routes → Pydantic schemas validate the
+request body → the route handler queries/mutates via a SQLAlchemy
+`Session` (injected per-request through `Depends(get_db)`) → the ORM
+model is serialized back through a Pydantic response schema. Schemas
+(`schemas.py`) and ORM models (`models.py`) are deliberately separate:
+the former is the API's public contract, the latter is the database
+table — mixing them was an early mistake in this project's history
+that's now a hard rule in `CLAUDE.md`.
+
+**Auth:** `POST /token` (OAuth2 password flow) verifies credentials and
+issues a JWT. Protected endpoints depend on `get_current_user`, which
+decodes the token, re-fetches the user from the database, and rejects
+the request with `401` if the token is invalid, expired, or the user
+no longer exists.
+
+**Errors:** expected conflicts (e.g. duplicate email) raise a specific
+`HTTPException`; unexpected database constraint violations are caught
+by a global `IntegrityError` handler as a `409` safety net, so no raw
+SQL error ever reaches a client.
+
+**CI/CD:** every push runs `pytest` against a Postgres service
+container and builds the Docker image; pushes to `main` additionally
+push that image to Artifact Registry, run `alembic upgrade head`
+against production as a one-off step, and deploy the new revision to
+Cloud Run. See `.github/workflows/ci.yml`.
+
 ## Project structure
 
 ```
@@ -132,9 +166,16 @@ pytest
 
 ## Status
 
-Work in progress — part of a larger backend learning roadmap. Completed
-so far: FastAPI CRUD, PostgreSQL + Alembic migrations, JWT auth, filters/
-pagination, consistent error handling, request logging, a pytest suite
-(unit, integration, and mocking), a Docker/Compose setup, and a CI/CD
-pipeline (GitHub Actions) that tests, builds, and deploys to Cloud Run
-on every push to `main`.
+`v1.0.0` — feature-complete for its scope as Project #1 of a backend
+learning roadmap (Python/FastAPI focus): FastAPI CRUD, PostgreSQL +
+Alembic migrations, JWT auth, filters/pagination, consistent error
+handling, request logging, a pytest suite (unit, integration, and
+mocking), a Docker/Compose setup, and a CI/CD pipeline that tests,
+builds, and deploys to Cloud Run on every push to `main`. Authorization
+is currently authentication-only (any logged-in user can act on any
+resource) — ownership-based authorization is a known next step, not
+yet implemented.
+
+## License
+
+[MIT](LICENSE)
